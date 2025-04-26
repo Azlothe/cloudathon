@@ -30,8 +30,99 @@ Resources:
         - AttributeName: item_id
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
       
   # ~~~~~~~~~~ END DynamoDB Resources ~~~~~~~~~~~~~~~
+
+  # ~~~~~~~~~~ BEGIN OLAP Resources ~~~~~~~~~~~~~~~
+
+  # OpenSearchDomain:
+  #   Type: AWS::OpenSearchService::Domain
+  #   Properties:
+  #     DomainName: !Sub ${AppName}-osearch
+  #     NodeToNodeEncryptionOptions:
+  #       Enabled: true
+  #     EBSOptions:
+  #       EBSEnabled: true
+  #       VolumeSize: 20  # Size in GB
+  #       VolumeType: gp2
+  #     EncryptionAtRestOptions:
+  #       Enabled: true
+  #     AccessPolicies:
+  #       Version: "2012-10-17"
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal: "*"
+  #           Action: "es:ESHttpPut"
+  #           Resource: arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${AppName}-opensearch/*  # OpenSearch write permissions
+
+  # ~~~~~~~~~~ END OLAP Resources ~~~~~~~~~~~~~~~
+
+  # ~~~~~~~~~~ BEGIN Lambda Resources ~~~~~~~~~~~~~
+
+  DynamoDBToOpenSearchLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AppName}-stream-processor
+      CodeUri: src/stream-processor/handlers/
+      Handler: processor.handler
+      Timeout: 300
+      MemorySize: 256
+      Runtime: python3.12
+      # Role: !GetAtt DynamoDBToOpenSearchLambdaRole.Arn
+      Policies:
+        - AdministratorAccess
+      Environment:
+        Variables:
+          OPENSEARCH_DOMAIN: "anycompany-dev-1-opensearch"
+      Events:
+        DynamoDBStreamEvent:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt ExampleTable.StreamArn  # Connects the DynamoDB stream to Lambda
+            StartingPosition: LATEST
+
+  # DynamoDBToOpenSearchLambdaRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: "2012-10-17"
+  #       Statement:
+  #         - Effect: "Allow"
+  #           Principal:
+  #             Service: "lambda.amazonaws.com"
+  #           Action: "sts:AssumeRole"
+  #     Policies:
+  #       - PolicyName: "DynamoDBStreamToOpenSearchPolicy"
+  #         PolicyDocument:
+  #           Version: "2012-10-17"
+  #           Statement:
+  #             # Allow Lambda to read from DynamoDB Streams
+  #             - Effect: "Allow"
+  #               Action: "dynamodb:DescribeStream"
+  #               Resource: !GetAtt ExampleTable.StreamArn
+  #             - Effect: "Allow"
+  #               Action: "dynamodb:GetRecords"
+  #               Resource: !GetAtt ExampleTable.StreamArn
+  #             - Effect: "Allow"
+  #               Action: "dynamodb:GetShardIterator"
+  #               Resource: !GetAtt ExampleTable.StreamArn
+  #             - Effect: "Allow"
+  #               Action: "dynamodb:ListStreams"
+  #               Resource: !GetAtt ExampleTable.StreamArn
+                
+  #             # Allow Lambda to write to OpenSearch
+  #             - Effect: "Allow"
+  #               Action: "es:ESHttpPut"
+  #               Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${AppName}-opensearch/*
+              
+  #             # Optional: CloudWatch Logs permissions (for logging Lambda execution)
+  #             - Effect: "Allow"
+  #               Action: "logs:*"
+  #               Resource: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AppName}-stream-processor:*
+
+  # ~~~~~~~~~~ END Lambda Resources ~~~~~~~~~~~~
 
   # ~~~~~~~~~~ BEGIN S3 Resources ~~~~~~~~~~~~~~~
 
