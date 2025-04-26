@@ -15,6 +15,13 @@ Parameters:
   # SecurityGroupId:
   #   Type: List<AWS::EC2::SecurityGroup::Id>
   #   Description: Select security group to associate with the VPC endpoint.
+  ImageTag:
+    Description: tag name for image
+    Type: String
+    Default: latest
+  ECRUri:
+    Type: String
+    Description: Name of the ECR repository
 
 Resources:
   # ~~~~~~~~~~ BEGIN DynamoDB Resources ~~~~~~~~~~~~~~~
@@ -191,3 +198,123 @@ Outputs:
   CloudFrontURL:
     Description: "CloudFront Distribution URL"
     Value: !Sub "https://${MyCloudFrontDistribution.DomainName}"
+
+
+  # ~~~~~~~~~~ BEGIN Fargate Resources ~~~~~~~~~~~~~~~
+
+  VPC:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./vpc.yml
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties: 
+      CapacityProviders: 
+        - FARGATE
+  
+  Service:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: "hello-world"
+      Cluster: !Ref Cluster
+      LaunchType: FARGATE
+      EnableExecuteCommand: true
+      HealthCheckGracePeriodSeconds: 5
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets: [!GetAtt "VPC.Outputs.PublicSubnet1", !GetAtt VPC.Outputs.PublicSubnet2]
+          SecurityGroups: [!GetAtt VPC.Outputs.SG]
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: 1
+      TaskDefinition: !Ref TaskDefinition
+      LoadBalancers:
+        - ContainerName: "hello-world"
+          ContainerPort: 3000
+          TargetGroupArn: !GetAtt VPC.Outputs.LB
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: HelloWorld
+      Cpu: 1024
+      Memory: 8192
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !Ref ECSTaskRole
+      RuntimePlatform:
+        CpuArchitecture: ARM64
+        OperatingSystemFamily: LINUX
+      ContainerDefinitions:
+        - Name: hello-world
+          Cpu: 1024
+          Memory: 8192
+          Image: !Sub ${ECRUri}:${ImageTag}
+          Essential: true
+          PortMappings:
+            - ContainerPort: 3000
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              mode: non-blocking
+              max-buffer-size: 25m
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: containerlog
+  
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /${AppName}/fargatelogs
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+          Condition:
+            ArnLike:
+              aws:SourceArn: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:*
+            StringEquals:
+              aws:SourceAccount: !Ref AWS::AccountId
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+          Condition:
+            ArnLike:
+              aws:SourceArn: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:*
+            StringEquals:
+              aws:SourceAccount: !Ref AWS::AccountId
+      Path: /
+  
+  # ~~~~~~~~~~ END Fargate Resources ~~~~~~~~~~~~~~~
+
+Outputs:
+  ClusterName:
+    Description: Amazon ECS Cluster Name
+    Value: !Ref Cluster
+  ServiceName:
+    Description: Amazon ECS Service Name
+    Value: !GetAtt Service.Name
+  FQDN:
+    Description: URL for your application
+    Value: !GetAtt VPC.Outputs.PublicLBFQDN
