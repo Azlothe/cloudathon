@@ -77,12 +77,29 @@ Resources:
       Timeout: 300
       MemorySize: 256
       Runtime: python3.12
-      # Role: !GetAtt DynamoDBToOpenSearchLambdaRole.Arn
+      Role: !GetAtt DynamoDBToOpenSearchLambdaRole.Arn
       Policies:
-        - AdministratorAccess
+        - PolicyName: "DynamoDBToOpenSearchPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Allow Lambda to interact with DynamoDB Streams
+              - Effect: "Allow"
+                Action:
+                  - "dynamodb:DescribeStream"
+                  - "dynamodb:GetRecords"
+                  - "dynamodb:GetShardIterator"
+                  - "dynamodb:ListStreams"
+                Resource: !GetAtt ExampleTable.StreamArn
+
+              # Allow Lambda to write to OpenSearch
+              - Effect: "Allow"
+                Action: "es:ESHttpPut"
+                Resource: !Sub arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${AppName}-opensearch-domain/*
       Environment:
         Variables:
           OPENSEARCH_DOMAIN: "anycompany-dev-1-opensearch"
+          AWS_REGION: !Ref AWS::Region  # Set region to use for OpenSearch (dynamically uses AWS region)
       Events:
         DynamoDBStreamEvent:
           Type: DynamoDB
