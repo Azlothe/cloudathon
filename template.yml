@@ -9,12 +9,12 @@ Parameters:
   DeploymentEnvironment:
     Type: String
     Description: Deployment environment
-  SubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-    Description: Select the subnets to associate with the VPC endpoint
-  SecurityGroupId:
-    Type: List<AWS::EC2::SecurityGroup::Id>
-    Description: Select security group to associate with the VPC endpoint.
+  # SubnetIds:
+  #   Type: List<AWS::EC2::Subnet::Id>
+  #   Description: Select the subnets to associate with the VPC endpoint
+  # SecurityGroupId:
+  #   Type: List<AWS::EC2::SecurityGroup::Id>
+  #   Description: Select security group to associate with the VPC endpoint.
 
 Resources:
   # ~~~~~~~~~~ BEGIN DynamoDB Resources ~~~~~~~~~~~~~~~
@@ -32,3 +32,71 @@ Resources:
       BillingMode: PAY_PER_REQUEST
       
   # ~~~~~~~~~~ END DynamoDB Resources ~~~~~~~~~~~~~~~
+
+  # ~~~~~~~~~~ BEGIN S3 Resources ~~~~~~~~~~~~~~~
+
+  MyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      BucketName: !Sub ${AppName}-artifacts
+
+  MyBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref MyBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt MyCloudFrontOAI.S3CanonicalUserId
+            Action: "s3:GetObject"
+            Resource: !Sub "${MyBucket.Arn}/*"
+
+
+  MyCloudFrontOAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: Access Identity for ${AppName} CloudFront
+
+
+  MyCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !GetAtt MyBucket.RegionalDomainName
+            Id: myS3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${MyCloudFrontOAI}"
+        Enabled: true
+        DefaultCacheBehavior:
+          TargetOriginId: myS3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        DefaultRootObject: index.html
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        HttpVersion: http2
+
+
+# ~~~~~~~~~~ END DynamoDB Resources ~~~~~~~~~~~~~~~
+
+Outputs:
+  BucketName:
+    Description: "S3 Bucket Name"
+    Value: !Ref MyBucket
+
+  CloudFrontURL:
+    Description: "CloudFront Distribution URL"
+    Value: !Sub "https://${MyCloudFrontDistribution.DomainName}"

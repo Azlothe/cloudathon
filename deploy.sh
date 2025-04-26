@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Exit on error
-set -e
+# # Exit on error
+# set -e
 
 # Check if environment parameter is provided
 if [ -z "$1" ]; then
@@ -23,14 +23,15 @@ API_KEYS_SECRET_NAME="anycompany-${ENVIRONMENT_NAME}-api-keys"
 
 if [ $ENVIRONMENT_NAME == "dev" ]
 then
-    export SUBNET_ID_NAME=""
-    export SECGRP_ID_NAME=""
-    export VPC_ENDPOINT_ID=""
+    export SUBNET_ID_NAME="a"
+    export SECGRP_ID_NAME="b"
+    export VPC_ENDPOINT_ID="c"
 fi
 
 echo "🚀 Starting deployment for ${STACK_NAME}..."
 
 # ~~~~~~~ BUILD SAM APPLICATION ~~~~~~~
+
 echo "🛠 Building SAM application..."
 PAGER=cat sam build --template-file template.yml --use-container
 
@@ -41,16 +42,12 @@ sam deploy \
     --stack-name ${STACK_NAME} \
     --s3-bucket ${DEPLOYMENT_BUCKET} \
     --s3-prefix $S3_CODE_SERVICE_FOLDER \
-    --image-repository ${ECR_URI} \
     --parameter-overrides \
         AppName=${APP_NAME} \
         DeploymentEnvironment=${ENVIRONMENT_NAME} \
-        SubnetIds=${SUBNET_ID_NAME} \
-        SecurityGroupId=${SECGRP_ID_NAME} \
     --capabilities CAPABILITY_IAM \
     --no-confirm-changeset \
     --no-fail-on-empty-changeset \
-    --profile ${PROFILE} \
     --region ${AWS_REGION}
 
 echo "✅ Deployment completed successfully!"
