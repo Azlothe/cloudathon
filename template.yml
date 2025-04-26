@@ -1,0 +1,34 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Stack for AnyCompany
+
+Parameters:
+  AppName:
+    Type: String
+    Description: Name for the app
+  DeploymentEnvironment:
+    Type: String
+    Description: Deployment environment
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Select the subnets to associate with the VPC endpoint
+  SecurityGroupId:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: Select security group to associate with the VPC endpoint.
+
+Resources:
+  # ~~~~~~~~~~ BEGIN DynamoDB Resources ~~~~~~~~~~~~~~~
+
+  ExampleTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${AppName}-example-table
+      AttributeDefinitions:
+        - AttributeName: item_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: item_id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      
+  # ~~~~~~~~~~ END DynamoDB Resources ~~~~~~~~~~~~~~~
